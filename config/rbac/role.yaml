@@ -1,0 +1,32 @@
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: manager-role
+rules:
+- apiGroups:
+  - automtls.kupher.io
+  resources:
+  - automtls
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - automtls.kupher.io
+  resources:
+  - automtls/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - automtls.kupher.io
+  resources:
+  - automtls/status
+  verbs:
+  - get
+  - patch
+  - update
