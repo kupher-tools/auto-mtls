@@ -81,69 +81,117 @@ func (r *AutomtlsReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
-	serviceType, exists := svc.Annotations["auto-mtls.kupher.io/role"]
-	if !exists {
-		serviceType = "Both"
+	err := r.enablemTLS(ctx, svc, log)
+	if err != nil {
+		log.Error(err, "Failed to enable mTLS for service", "service", svc.Name)
+		return ctrl.Result{}, err
 	}
 
-	if serviceType == "Server" {
-		log.Info("Detected Server service:", "name", svc.Name)
-		err := r.enableServerTLS(ctx, svc, log)
+	return ctrl.Result{}, nil
+}
+
+func (r *AutomtlsReconciler) enablemTLS(ctx context.Context, svc *corev1.Service, log logr.Logger) error {
+	// Implementation for enabling server TLS
+
+	// Create Server cert and corresponding TLS secret
+	if err := r.createServerCert(ctx, svc, log); err != nil {
+		log.Error(err, "Failed to create certificate for service", "service", svc.Name)
+		return err
+	}
+
+	// Create CA cert TLS secret
+	if err := r.createCACertSecret(ctx, svc, log); err != nil {
+		log.Error(err, "Failed to create CA cert secret for service", "service", svc.Name)
+		return err
+	}
+
+	//mount Ca Cert and Server keys
+	if err := r.mountMTLSCerts(ctx, svc, log); err != nil {
+		log.Error(err, "Failed to create CA cert secret for service", "service", svc.Name)
+		return err
+	}
+	log.Info("Successfully mounted mTLS certificates for service", "service", svc.Name)
+	return nil
+
+}
+
+func (r *AutomtlsReconciler) mountMTLSCerts(ctx context.Context, svc *corev1.Service, log logr.Logger) error {
+	// Implementation for mounting mTLS certificates into the deployment
+	deploy, err := r.findDeploymentForSvc(ctx, svc)
+	if err != nil {
+		log.Error(err, "Failed to find deployment for service", "service", svc.Name)
+		return err
+	}
+	if deploy == nil {
+		log.Info("No deployment found for service", "service", svc.Name)
+		return nil // Nothing to do if no deployment found
+	} else {
+		err = mountSecrets(ctx, r.Client, deploy, svc.Name)
+
 		if err != nil {
-			log.Error(err, "Failed to enable server TLS for service", "service", svc.Name)
-			return ctrl.Result{}, err
+			log.Error(err, "Failed to patch deployment with server certificate", "deployment", deploy.Name, "service", svc.Name)
+			return err
 		}
 
-		return ctrl.Result{}, nil
+		if err != nil {
+			log.Error(err, "Failed to mount server certificate", "service", svc.Name)
+			return err
+		}
 
-	} else if serviceType == "Client" {
-		enableClientTLS()
-	} else if serviceType == "Both" {
-		enableMtls()
-	}
-
-	if !secretCreated {
-		log.Info("Secret yet not created for service", "service", svc.Name)
-		return ctrl.Result{RequeueAfter: 10 * time.Second}, nil // Requeue to check again
-
+		log.Info("Successfully mounted server certificate to deployment", "deployment", deploy.Name, "service", svc.Name)
+		return nil
 	}
 
 }
 
-func (r *AutomtlsReconciler) enableServerTLS(ctx context.Context, svc *corev1.Service, log logr.Logger) error {
-	// Implementation for enabling server TLS
-	err := createServerCert(ctx, r.Client, svc.Namespace, svc.Name)
-	if err != nil {
-		log.Error(err, "Failed to create certificate for service", "service", svc.Name)
-		return err
-	}
-	// check if secret created in loop for 20 seconds
-	secret := &corev1.Secret{}
-	secretCreated := false
-	// TODO:  This is temp solution to wait for secret creation
-	for i := 0; i < 20; i++ {
-		if err := r.Get(ctx, types.NamespacedName{Name: svc.Name + "-cert-tls", Namespace: svc.Namespace}, secret); err != nil {
-			log.Error(err, "Failed to get secret for service", "service", svc.Name)
-			continue
-		} else {
-			deploy, err := r.findDeploymentForSvc(ctx, svc)
-			if err != nil {
-				log.Error(err, "Failed to find deployment for service", "service", svc.Name)
-				return err
-			}
-			err = mountServerCert(ctx, r.Client, deploy, svc.Name)
-			if err != nil {
-				log.Error(err, "Failed to mount server certificate", "service", svc.Name)
-				return err
-			}
-			secretCreated = true
-			log.Info("Successfully mounted server certificate to deployment", "deployment", deploy.Name, "service", svc.Name)
+func (r *AutomtlsReconciler) createCACertSecret(ctx context.Context, svc *corev1.Service, log logr.Logger) error {
+	caCertSecret := &corev1.Secret{}
+
+	err := r.Get(ctx, types.NamespacedName{
+		Name:      "auto-mtls-ca-cert",
+		Namespace: svc.Namespace,
+	}, caCertSecret)
+
+	if err == nil {
+		// Secret already exists — skip
+		log.Info("Secret already exist, so skipping")
+		return nil
+	} else {
+		//Create secret for CA cert in namespace
+		src := &corev1.Secret{}
+		if err := r.Get(ctx, types.NamespacedName{
+			Name:      "auto-mtls-cluster-ca-cert-secret",
+			Namespace: "cert-manager",
+		}, src); err != nil {
+			log.Error(err, "failed to get source CA secret")
+			return err
 		}
 
+		caData, ok := src.Data["ca.crt"]
+		if !ok {
+			log.Error(err, "Source secret missing ca.crt")
+			return fmt.Errorf("source secret missing ca.crt")
+
+		}
+		newSecret := &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "auto-mtls-ca-cert",
+				Namespace: svc.Namespace,
+			},
+			Data: map[string][]byte{
+				"ca.crt": caData,
+			},
+			Type: corev1.SecretTypeOpaque,
+		}
+
+		if err := r.Create(ctx, newSecret); err != nil {
+			return fmt.Errorf("failed to create secret in %s: %w", svc.Namespace, err)
+		}
+
+		fmt.Println("Created CA secret in", svc.Namespace)
+
 	}
-
 	return nil
-
 }
 
 func (r *AutomtlsReconciler) findDeploymentForSvc(ctx context.Context, svc *corev1.Service) (*appsv1.Deployment, error) {
@@ -176,20 +224,23 @@ func selectorMatches(labels, selector map[string]string) bool {
 	return true
 }
 
-func createServerCert(ctx context.Context, c client.Client, namespace string, svc string) error {
+func (r *AutomtlsReconciler) createServerCert(ctx context.Context, service *corev1.Service, log logr.Logger) error {
+	namespace := service.Namespace
+	svc := service.Name
 	caIssuer := "auto-mtls-cluster-ca-issuer"
 	certName := svc + "-cert"
 	secretName := certName + "-tls"
 
 	existingCert := &certmanagerv1.Certificate{}
 
-	err := c.Get(ctx, types.NamespacedName{
+	err := r.Get(ctx, types.NamespacedName{
 		Name:      certName,
 		Namespace: namespace,
 	}, existingCert)
 
 	if err == nil {
 		// Certificate already exists — nothing to do
+		log.Info("Certificate already exists", "name", certName, "namespace", namespace)
 		return nil
 	}
 
@@ -220,35 +271,35 @@ func createServerCert(ctx context.Context, c client.Client, namespace string, sv
 			},
 		},
 	}
-	err = c.Create(ctx, cert)
+	err = r.Create(ctx, cert)
 	if err != nil {
+		log.Error(err, "Failed to create certificate", "name", certName, "namespace", namespace)
 		return err
 	}
+	log.Info("Created certificate", "name", certName, "namespace", namespace)
 	return nil
 }
 
 // patchDeployment adds a volume and volumeMount if missing
-func mountServerCert(ctx context.Context, c client.Client, deploy *appsv1.Deployment, svcName string) error {
-	volumeName := svcName + "-cert-tls"
+func mountSecrets(ctx context.Context, c client.Client, deploy *appsv1.Deployment, svcName string) error {
+	serverCertvolumeName := svcName + "-cert-tls"
 	patched := deploy.DeepCopy()
 
-	// Check if volume exists, if not append
-
-	foundVol := false
+	// Check if foundServerCertVol exists, if not append
+	foundServerCertVol := false
 	for _, v := range patched.Spec.Template.Spec.Volumes {
-		if v.Name == volumeName {
+		if v.Name == serverCertvolumeName {
 			fmt.Println("Skipping auto-mtls-cert volume to deployment", "deployment", deploy.Name)
-			foundVol = true
-			return nil
+			foundServerCertVol = true
 		}
 	}
-	if !foundVol {
+	if !foundServerCertVol {
 		patched.Spec.Template.Spec.Volumes = append(patched.Spec.Template.Spec.Volumes,
 			corev1.Volume{
-				Name: volumeName,
+				Name: serverCertvolumeName,
 				VolumeSource: corev1.VolumeSource{
 					Secret: &corev1.SecretVolumeSource{
-						SecretName: volumeName, // Secret name spacific to service
+						SecretName: serverCertvolumeName, // Secret name spacific to service
 					},
 				},
 			},
@@ -259,7 +310,7 @@ func mountServerCert(ctx context.Context, c client.Client, deploy *appsv1.Deploy
 	for i, container := range patched.Spec.Template.Spec.Containers {
 		foundMount := false
 		for _, vm := range container.VolumeMounts {
-			if vm.Name == volumeName {
+			if vm.Name == serverCertvolumeName {
 				foundMount = true
 				break
 			}
@@ -267,7 +318,7 @@ func mountServerCert(ctx context.Context, c client.Client, deploy *appsv1.Deploy
 		if !foundMount {
 			patched.Spec.Template.Spec.Containers[i].VolumeMounts = append(container.VolumeMounts,
 				corev1.VolumeMount{
-					Name:      volumeName,
+					Name:      serverCertvolumeName,
 					MountPath: "/etc/tls",
 					ReadOnly:  true,
 				},
@@ -275,6 +326,49 @@ func mountServerCert(ctx context.Context, c client.Client, deploy *appsv1.Deploy
 		}
 	}
 
+	caCertvolumeName := "auto-mtls-ca-cert"
+	// Check if foundServerCertVol exists, if not append
+	caCertVol := false
+	for _, v := range patched.Spec.Template.Spec.Volumes {
+		if v.Name == caCertvolumeName {
+			fmt.Println("Skipping auto-mtls-cert volume to deployment", "deployment", deploy.Name)
+			caCertVol = true
+		}
+	}
+	if !caCertVol {
+		patched.Spec.Template.Spec.Volumes = append(patched.Spec.Template.Spec.Volumes,
+			corev1.Volume{
+				Name: caCertvolumeName,
+				VolumeSource: corev1.VolumeSource{
+					Secret: &corev1.SecretVolumeSource{
+						SecretName: caCertvolumeName, // Secret name spacific to service
+					},
+				},
+			},
+		)
+	}
+
+	// Add volumeMount to each container if missing
+	for i, container := range patched.Spec.Template.Spec.Containers {
+		foundMount := false
+		for _, vm := range container.VolumeMounts {
+			if vm.Name == caCertvolumeName {
+				foundMount = true
+				break
+			}
+		}
+		if !foundMount {
+			patched.Spec.Template.Spec.Containers[i].VolumeMounts = append(container.VolumeMounts,
+				corev1.VolumeMount{
+					Name:      caCertvolumeName,
+					MountPath: "/etc/ca",
+					ReadOnly:  true,
+				},
+			)
+		}
+	}
+
 	// Patch the deployment
+
 	return c.Patch(ctx, patched, client.MergeFrom(deploy))
 }

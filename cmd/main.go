@@ -221,13 +221,14 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err := (&controller.DeploymentReconciler{
+	/*if err := (&controller.DeploymentReconciler{
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create deployment controller", "controller", "Automtls")
 		os.Exit(1)
 	}
+	*/
 	// +kubebuilder:scaffold:builder
 
 	if metricsCertWatcher != nil {
