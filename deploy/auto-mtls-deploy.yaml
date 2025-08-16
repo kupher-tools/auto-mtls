@@ -1,0 +1,181 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  labels:
+    app.kubernetes.io/name: auto-mtls
+  name: auto-mtls-system
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  labels:
+    app.kubernetes.io/name: auto-mtls
+  name: auto-mtls-operator
+  namespace: auto-mtls-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: auto-mtls-role
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - secrets
+  - events
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - ""
+  resources:
+  - services
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - apps
+  resources:
+  - deployments
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - automtls.kupher.io
+  resources:
+  - automtls
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - automtls.kupher.io
+  resources:
+  - automtls/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - automtls.kupher.io
+  resources:
+  - automtls/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - cert-manager.io
+  resources:
+  - '*'
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - coordination.k8s.io
+  resources:
+  - leases
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  labels:
+    app.kubernetes.io/name: auto-mtls
+  name: auto-mtls-rolebinding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: auto-mtls-role
+subjects:
+- kind: ServiceAccount
+  name: auto-mtls-operator
+  namespace: auto-mtls-system
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: auto-mtls-operator
+  namespace: auto-mtls-system
+  labels:
+    app.kubernetes.io/name: auto-mtls
+
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: auto-mtls
+  replicas: 1
+  template:
+    metadata:
+      annotations:
+        kubectl.kubernetes.io/default-container: manager
+      labels:
+        app.kubernetes.io/name: auto-mtls
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+      - command:
+        - /manager
+        args:
+          - --leader-elect
+          - --health-probe-bind-address=:8081
+        image: kupher/auto-mtls-operator:v0.0.1
+        name: manager
+        ports: []
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - "ALL"
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: 8081
+          initialDelaySeconds: 15
+          periodSeconds: 20
+        readinessProbe:
+          httpGet:
+            path: /readyz
+            port: 8081
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        resources:
+          limits:
+            cpu: 500m
+            memory: 128Mi
+          requests:
+            cpu: 10m
+            memory: 64Mi
+        volumeMounts: []
+      volumes: []
+      serviceAccountName: auto-mtls-operator
+      terminationGracePeriodSeconds: 10
