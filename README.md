@@ -24,9 +24,9 @@ This operator does not use any CRDs — it works entirely with built-in Kubernet
 
 - In production workloads where simplicity, performance, and security matter.
 
-## Installation
+## Install Auto-mTLS Operator
 
-1. Install Cert-Manager v1.18.2 with below command:
+1. Deploy Cert-Manager v1.18.2 with below command:
  ```sh
    
   helm install \
@@ -36,130 +36,170 @@ This operator does not use any CRDs — it works entirely with built-in Kubernet
   --create-namespace \
   --set crds.enabled=true
 ```
-2.  
 
-### Prerequisites
-- Cert-Manager v1.18.2
+2.  Deploy auto-mtls operator using below command:
+```sh
 
+kubectl apply -f https://raw.githubusercontent.com/kupher-tools/auto-mtls/refs/heads/main/deploy/auto-mtls-deploy.yaml
+```
+## 🔐 Setup Zero-Touch mTLS with Auto-MTLS Operator
 
-### To Deploy on the cluster
-**Build and push your image to the location specified by `IMG`:**
+The **Auto-MTLS Operator** automatically provisions TLS certificates, CA bundles, and mounts them into your workloads — no manual secret management required.
+It leverages cert-manager under the hood, but keeps things lightweight compared to a full service mesh.
+
+### 1. Deploy the Server
+Deploy a server Service + Deployment.
+
+Notice that **no TLS certificates are mounted manually** — the operator detects the annotation `auto-mtls.kupher.io/enabled=true` and handles certificate + CA injection automatically.
 
 ```sh
-make docker-build docker-push IMG=<some-registry>/auto-mtls:tag
+apiVersion: v1
+kind: Service
+metadata:
+  name: mtls-server
+  annotations:
+    auto-mtls.kupher.io/enabled: "true"
+spec:
+  selector:
+    app: mtls-server
+  ports:
+    - protocol: TCP
+      port: 8443
+      targetPort: 8443
+  type: ClusterIP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mtls-server
+  labels:
+    app: mtls-server
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mtls-server
+  template:
+    metadata:
+      labels:
+        app: mtls-server
+    spec:
+      containers:
+        - name: mtls-server
+          image: kupher/mtls-server-example:v0.0.3
+          ports:
+            - containerPort: 8443
 ```
-
-**NOTE:** This image ought to be published in the personal registry you specified.
-And it is required to have access to pull the image from the working environment.
-Make sure you have the proper permission to the registry if the above commands don’t work.
-
-**Install the CRDs into the cluster:**
+Or apply directly:
 
 ```sh
-make install
-```
+kubectl apply -f https://raw.githubusercontent.com/kupher-tools/auto-mtls/refs/heads/main/examples/mtls-server/deploy/mtls-server.yaml
 
-**Deploy the Manager to the cluster with the image specified by `IMG`:**
+```
+➡️ Once created, you will see below resources created for Server Application:
+
+- A Certificate resource (`kubectl get certificate mtls-server-cert`)
+
+- A TLS Secret with tls.crt + tls.key (`kubectl get secret mtls-server-cert-tls`)
+
+- The CA cert Secret (`kubectl get secret auto-mtls-ca-cert`)
+
+- Secrets automatically mounted into Server Pod.(`kubectl describe pod <pod-name>`)
+
+2. Deploy the Client
+
+Similarly, deploy a client workload. Again, **no manual TLS secrets — the operator injects them.**
 
 ```sh
-make deploy IMG=<some-registry>/auto-mtls:tag
+apiVersion: v1
+kind: Service
+metadata:
+  name: mtls-client
+  namespace: default
+  annotations:
+    auto-mtls.kupher.io/enabled: "true"   # Example annotation to trigger operator
+spec:
+  selector:
+    app: mtls-client
+  ports:
+    - protocol: TCP
+      port: 8443
+      targetPort: 8443
+  type: ClusterIP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mtls-client
+  labels:
+    app: mtls-client
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mtls-client
+  template:
+    metadata:
+      labels:
+        app: mtls-client
+    spec:
+      containers:
+        - name: mtls-client
+          image: kupher/mtls-client-example:v0.0.1
+          env:
+            - name: MTLS_SERVER_HOST
+              value: "mtls-server"  # Service name of the mTLS server
+          ports:
+            - containerPort: 8443
 ```
-
-> **NOTE**: If you encounter RBAC errors, you may need to grant yourself cluster-admin
-privileges or be logged in as admin.
-
-**Create instances of your solution**
-You can apply the samples (examples) from the config/sample:
+Or apply directly:
 
 ```sh
-kubectl apply -k config/samples/
+kubectl apply -f https://raw.githubusercontent.com/kupher-tools/auto-mtls/refs/heads/main/examples/mtls-client/deploy/mtls-client.yaml
+
 ```
 
->**NOTE**: Ensure that the samples has default values to test it out.
+➡️ Once created, you will see below resources created for Client Application:
 
-### To Uninstall
-**Delete the instances (CRs) from the cluster:**
+- A Certificate resource (`kubectl get certificate mtls-client-cert`)
+
+- A TLS Secret with tls.crt + tls.key (`kubectl get secret mtls-client-cert-tls`)
+
+- The CA cert Secret (`kubectl get secret auto-mtls-ca-cert`)
+
+- Secrets automatically mounted into the Client Pod.(`kubectl describe pod <pod-name>`)
+
+3. Verify mTLS
+
+When both Pods are running:
+
+- The Server only accepts connections authenticated with client certificates
+
+- The Client uses the mounted TLS/CA bundle to authenticate itself
+
+- All traffic between them is mutually authenticated (mTLS)
+
+⚡ That’s it! You now have **Zero-Touch mTLS** — no need to manually create, distribute, or rotate TLS certs.
+
+
+### Un-Install Auto-mTLS Operator
+**Delete the Auto-mTLS Operator from the cluster:**
 
 ```sh
-kubectl delete -k config/samples/
+kubectl delete -f https://raw.githubusercontent.com/kupher-tools/auto-mtls/refs/heads/main/deploy/auto-mtls-deploy.yaml
 ```
 
-**Delete the APIs(CRDs) from the cluster:**
+**Delete the Cert-Manager from the cluster:**
 
 ```sh
-make uninstall
+helm uninstall cert-manager -n cert-manager
 ```
 
-**UnDeploy the controller from the cluster:**
 
-```sh
-make undeploy
-```
 
-## Project Distribution
+## Contribution
 
-Following the options to release and provide this solution to the users.
+Contributions are welcome! 🎉  
 
-### By providing a bundle with all YAML files
-
-1. Build the installer for the image built and published in the registry:
-
-```sh
-make build-installer IMG=<some-registry>/auto-mtls:tag
-```
-
-**NOTE:** The makefile target mentioned above generates an 'install.yaml'
-file in the dist directory. This file contains all the resources built
-with Kustomize, which are necessary to install this project without its
-dependencies.
-
-2. Using the installer
-
-Users can just run 'kubectl apply -f <URL for YAML BUNDLE>' to install
-the project, i.e.:
-
-```sh
-kubectl apply -f https://raw.githubusercontent.com/<org>/auto-mtls/<tag or branch>/dist/install.yaml
-```
-
-### By providing a Helm Chart
-
-1. Build the chart using the optional helm plugin
-
-```sh
-operator-sdk edit --plugins=helm/v1-alpha
-```
-
-2. See that a chart was generated under 'dist/chart', and users
-can obtain this solution from there.
-
-**NOTE:** If you change the project, you need to update the Helm Chart
-using the same command above to sync the latest changes. Furthermore,
-if you create webhooks, you need to use the above command with
-the '--force' flag and manually ensure that any custom configuration
-previously added to 'dist/chart/values.yaml' or 'dist/chart/manager/manager.yaml'
-is manually re-applied afterwards.
-
-## Contributing
-// TODO(user): Add detailed information on how you would like others to contribute to this project
-
-**NOTE:** Run `make help` for more information on all potential `make` targets
-
-More information can be found via the [Kubebuilder Documentation](https://book.kubebuilder.io/introduction.html)
-
-## License
-
-Copyright 2025.
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-    http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
+If you'd like to help improve this project, please check out our [Contributing Guide](CONTRIBUTING.md) for details on how to get started. 
 
