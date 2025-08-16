@@ -96,6 +96,7 @@ Or apply directly:
 kubectl apply -f https://raw.githubusercontent.com/kupher-tools/auto-mtls/refs/heads/main/examples/mtls-server/deploy/mtls-server.yaml
 
 ```
+
 ➡️ Once created, you will see below resources created for Server Application:
 
 - A Certificate resource (`kubectl get certificate mtls-server-cert`)
@@ -104,9 +105,20 @@ kubectl apply -f https://raw.githubusercontent.com/kupher-tools/auto-mtls/refs/h
 
 - The CA cert Secret (`kubectl get secret auto-mtls-ca-cert`)
 
-- Secrets automatically mounted into Server Pod.(`kubectl describe pod <pod-name>`)
+- Secrets automatically mounted on Server Pod as below.(`kubectl describe pod <pod-name>`)
 
+```sh
 
+Volumes:
+  mtls-server-cert-tls:
+    Type:        Secret (a volume populated by a Secret)
+    SecretName:  mtls-server-cert-tls
+    Optional:    true
+  auto-mtls-ca-cert:
+    Type:        Secret (a volume populated by a Secret)
+    SecretName:  auto-mtls-ca-cert
+    Optional:    true
+```
 
 ### 2. Deploy the Client
 
@@ -169,9 +181,20 @@ kubectl apply -f https://raw.githubusercontent.com/kupher-tools/auto-mtls/refs/h
 
 - The CA cert Secret (`kubectl get secret auto-mtls-ca-cert`)
 
-- Secrets automatically mounted into the Client Pod.(`kubectl describe pod <pod-name>`)
+- Secrets automatically mounted on the Client Pod as below.(`kubectl describe pod <pod-name>`)
 
+```sh
 
+Volumes:
+  mtls-client-cert-tls:
+    Type:        Secret (a volume populated by a Secret)
+    SecretName:  mtls-client-cert-tls
+    Optional:    true
+  auto-mtls-ca-cert:
+    Type:        Secret (a volume populated by a Secret)
+    SecretName:  auto-mtls-ca-cert
+    Optional:    true
+```
 
 ### 3. Verify mTLS
 
