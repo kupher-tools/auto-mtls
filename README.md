@@ -2,7 +2,7 @@
  #### Zero-Touch Mutual TLS for Kubernetes Workloads
 Auto-mTLS is a lightweight Kubernetes operator that enables mutual TLS (mTLS) between services automatically, without requiring a full service mesh.
 
-## Description
+## 📖 Description
 `Auto-mTLS Operator` automatically manages mutual TLS (mTLS) for Kubernetes Services annotated with `auto-mtls.kupher.io/enabled=true`. It creates certificates, secrets, and cleans up when services are deleted.
 
 This operator does not use any CRDs — it works entirely with built-in Kubernetes resources (Services, Secrets, Certificates).
@@ -24,7 +24,7 @@ This operator does not use any CRDs — it works entirely with built-in Kubernet
 
 - In production workloads where simplicity, performance, and security matter.
 
-## Install Auto-mTLS Operator
+## 📦 Install Auto-mTLS Operator
 
 1. Deploy Cert-Manager v1.18.2 with below command:
  ```sh
@@ -106,7 +106,9 @@ kubectl apply -f https://raw.githubusercontent.com/kupher-tools/auto-mtls/refs/h
 
 - Secrets automatically mounted into Server Pod.(`kubectl describe pod <pod-name>`)
 
-2. Deploy the Client
+
+
+### 2. Deploy the Client
 
 Similarly, deploy a client workload. Again, **no manual TLS secrets — the operator injects them.**
 
@@ -169,7 +171,9 @@ kubectl apply -f https://raw.githubusercontent.com/kupher-tools/auto-mtls/refs/h
 
 - Secrets automatically mounted into the Client Pod.(`kubectl describe pod <pod-name>`)
 
-3. Verify mTLS
+
+
+### 3. Verify mTLS
 
 When both Pods are running:
 
