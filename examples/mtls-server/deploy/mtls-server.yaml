@@ -2,41 +2,39 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: server-app
-  namespace: default
+  name: mtls-server
   annotations:
     auto-mtls.kupher.io/enabled: "true"
-    auto-mtls.kupher.io/role: "server"
 spec:
   selector:
-    app: server-app
+    app: mtls-server
   ports:
     - protocol: TCP
-      port: 80
-      targetPort: 80
+      port: 8443
+      targetPort: 8443
   type: ClusterIP
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: server-app
+  name: mtls-server
   labels:
-    app: server-app
+    app: mtls-server
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: server-app
+      app: mtls-server
   template:
     metadata:
       labels:
-        app: server-app
+        app: mtls-server
     spec:
       containers:
-        - name: nginx
-          image: nginx:stable
+        - name: mtls-server
+          image: kupher/mtls-server-example:v0.0.3
           ports:
-            - containerPort: 80
+            - containerPort: 8443
 
 
 

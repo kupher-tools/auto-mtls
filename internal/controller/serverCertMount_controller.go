@@ -33,6 +33,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 )
@@ -76,9 +77,38 @@ func (r *AutomtlsReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 
 	log.Info("Reconciling auto-mtls", "name", req.Name, "namespace", req.Namespace)
 	svc := &corev1.Service{}
+
 	if err := r.Get(ctx, req.NamespacedName, svc); err != nil {
-		log.Error(err, "unable to fetch Service")
-		return ctrl.Result{}, client.IgnoreNotFound(err)
+		if apierrors.IsNotFound(err) {
+			// Service is deleted → delete the certificate
+			certName := req.Name + "-cert"
+			err := r.Delete(ctx, &certmanagerv1.Certificate{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      certName,
+					Namespace: req.Namespace,
+				},
+			})
+			if err != nil && !apierrors.IsNotFound(err) {
+				return ctrl.Result{}, err
+			}
+			log.Info("Deleted certificate because service was deleted", "namespace", req.Namespace, "secret", certName)
+			// certificate is deleted → delete the secret
+			secretName := req.Name + "-cert-tls"
+
+			err = r.Delete(ctx, &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      secretName,
+					Namespace: req.Namespace,
+				},
+			})
+
+			if err != nil && !apierrors.IsNotFound(err) {
+				return ctrl.Result{}, err
+			}
+			log.Info("Deleted secret because service was deleted", "namespace", req.Namespace, "secret", secretName)
+			return ctrl.Result{}, nil
+		}
+		return ctrl.Result{}, err
 	}
 
 	err := r.enablemTLS(ctx, svc, log)
@@ -300,6 +330,7 @@ func mountSecrets(ctx context.Context, c client.Client, deploy *appsv1.Deploymen
 				VolumeSource: corev1.VolumeSource{
 					Secret: &corev1.SecretVolumeSource{
 						SecretName: serverCertvolumeName, // Secret name spacific to service
+						Optional:   ptrBool(true),
 					},
 				},
 			},
@@ -342,6 +373,7 @@ func mountSecrets(ctx context.Context, c client.Client, deploy *appsv1.Deploymen
 				VolumeSource: corev1.VolumeSource{
 					Secret: &corev1.SecretVolumeSource{
 						SecretName: caCertvolumeName, // Secret name spacific to service
+						Optional:   ptrBool(true),
 					},
 				},
 			},
@@ -371,4 +403,9 @@ func mountSecrets(ctx context.Context, c client.Client, deploy *appsv1.Deploymen
 	// Patch the deployment
 
 	return c.Patch(ctx, patched, client.MergeFrom(deploy))
+}
+
+// ptrBool returns a pointer to the given bool value.
+func ptrBool(b bool) *bool {
+	return &b
 }

@@ -1,0 +1,43 @@
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mtls-client
+  namespace: default
+  annotations:
+    auto-mtls.kupher.io/enabled: "true"   # Example annotation to trigger operator
+spec:
+  selector:
+    app: mtls-client
+  ports:
+    - protocol: TCP
+      port: 8443
+      targetPort: 8443
+  type: ClusterIP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mtls-client
+  labels:
+    app: mtls-client
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mtls-client
+  template:
+    metadata:
+      labels:
+        app: mtls-client
+    spec:
+      containers:
+        - name: mtls-client
+          image: kupher/mtls-client-example:v0.0.1
+          env:
+            - name: MTLS_SERVER_HOST
+              value: "mtls-server"  # Service name of the mTLS server
+          ports:
+            - containerPort: 8443
+
+
