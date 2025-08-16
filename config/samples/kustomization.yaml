@@ -1,6 +1,0 @@
-## Append samples of your project ##
-resources:
-- automtls_v1alpha1_auto-mtls--resource.yaml
-- automtls_v1alpha1_automtls--resource.yaml
-- automtls_v1alpha1_automtls.yaml
-# +kubebuilder:scaffold:manifestskustomizesamples

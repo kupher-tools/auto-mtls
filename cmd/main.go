@@ -38,7 +38,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
 	certmanagerv1 "github.com/cert-manager/cert-manager/pkg/apis/certmanager/v1"
-	automtlsv1alpha1 "github.com/kupher-tools/auto-mtls/api/v1alpha1"
+
 	"github.com/kupher-tools/auto-mtls/internal/controller"
 	// +kubebuilder:scaffold:imports
 )
@@ -51,7 +51,6 @@ var (
 func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
 
-	utilruntime.Must(automtlsv1alpha1.AddToScheme(scheme))
 	utilruntime.Must(certmanagerv1.AddToScheme(scheme))
 
 	// +kubebuilder:scaffold:scheme
