@@ -1,25 +1,17 @@
-# Auto-mTLS Operator
-
-`Auto-mTLS Operator` automatically manages mutual TLS (mTLS) for Kubernetes Services annotated with `auto-mtls.kupher.io/enabled=true`. It creates certificates, secrets, and cleans up when services are deleted.
-
-This operator does not use any CRDs — it works entirely with built-in Kubernetes resources (Services, Secrets, Certificates).
+# Contributing
+# auto-mtls
+// TODO(user): Add simple overview of use/purpose
 
 ## Description
 // TODO(user): An in-depth paragraph about your project and overview of use
 
-## Features
-- Watches Services annotated with auto-mtls.kupher.io/enabled=true.
-- Automatically creates a certificate for the service using cert-manager.
-- Creates/updates a Secret containing TLS key/cert and CA certificate.
-- Deletes the Secret when the Service is removed.
-- Supports mTLS between client and server pods.
-- Minimal RBAC — only requires permissions for Secrets, Services, and Certificates
-
-## Usage
+## Getting Started
 
 ### Prerequisites
-- Cert-Manager v1.18.2
-
+- go version v1.24.0+
+- docker version 17.03+.
+- kubectl version v1.11.3+.
+- Access to a Kubernetes v1.11.3+ cluster.
 
 ### To Deploy on the cluster
 **Build and push your image to the location specified by `IMG`:**
