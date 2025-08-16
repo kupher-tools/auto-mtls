@@ -1,21 +1,42 @@
 # Auto-mTLS Operator
+ #### Zero-Touch Mutual TLS for Kubernetes Workloads
+Auto-mTLS is a lightweight Kubernetes operator that enables mutual TLS (mTLS) between services automatically, without requiring a full service mesh.
 
+## Description
 `Auto-mTLS Operator` automatically manages mutual TLS (mTLS) for Kubernetes Services annotated with `auto-mtls.kupher.io/enabled=true`. It creates certificates, secrets, and cleans up when services are deleted.
 
 This operator does not use any CRDs — it works entirely with built-in Kubernetes resources (Services, Secrets, Certificates).
 
-## Description
-// TODO(user): An in-depth paragraph about your project and overview of use
+## 🔑 Key Features:
+- **Zero-Touch Setup** – No manual cert management; certificates are issued, rotated, and revoked automatically.
 
-## Features
-- Watches Services annotated with auto-mtls.kupher.io/enabled=true.
-- Automatically creates a certificate for the service using cert-manager.
-- Creates/updates a Secret containing TLS key/cert and CA certificate.
-- Deletes the Secret when the Service is removed.
-- Supports mTLS between client and server pods.
-- Minimal RBAC — only requires permissions for Secrets, Services, and Certificates
+- **Works on top of cert-manager** – Leverages cert-manager to handle PKI operations securely.
 
-## Usage
+- **mTLS Only, No Overhead** – Focused purely on mutual TLS; **no heavy service mesh components**.
+
+- **Lightweight & Cloud-Native** – Minimal resource footprint, works with any Kubernetes cluster.
+
+## 📌 When to Use auto-mTLS
+
+- When security (mTLS) is needed but a full service mesh is overkill.
+
+- For DevSecOps & Platform Engineering teams who want secure service-to-service communication without complexity.
+
+- In production workloads where simplicity, performance, and security matter.
+
+## Installation
+
+1. Install Cert-Manager v1.18.2 with below command:
+ ```sh
+   
+  helm install \
+  cert-manager oci://quay.io/jetstack/charts/cert-manager \
+  --version v1.18.2 \
+  --namespace cert-manager \
+  --create-namespace \
+  --set crds.enabled=true
+```
+2.  
 
 ### Prerequisites
 - Cert-Manager v1.18.2
