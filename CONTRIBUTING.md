@@ -1,136 +1,86 @@
-# Contributing
-# auto-mtls
-// TODO(user): Add simple overview of use/purpose
+# Contributing to Auto-mTLS Operator 🚀
 
-## Description
-// TODO(user): An in-depth paragraph about your project and overview of use
+First off — thanks for considering contributing! 🎉 Contributions are what make the open-source community amazing, so we’d love your help.
 
-## Getting Started
+There are many ways you can contribute: reporting bugs, suggesting features, improving docs, or sending pull requests.
 
-### Prerequisites
-- go version v1.24.0+
-- docker version 17.03+.
-- kubectl version v1.11.3+.
-- Access to a Kubernetes v1.11.3+ cluster.
+## 🛠️ Getting Started
+### 1. Fork & Clone
+- Fork a auto-mtls repo : https://github.com/kupher-tools/auto-mtls.git
+  
+- Clone repo to your machine or Github Codespace : `git clone https://github.com/<your-username>/auto-mtls.git`
 
-### To Deploy on the cluster
-**Build and push your image to the location specified by `IMG`:**
 
-```sh
-make docker-build docker-push IMG=<some-registry>/auto-mtls:tag
+### 2. Set Up Dev Environment
+
+You’ll need:
+
+ ```sh
+Go v1.24.0+
+
+Docker 17.03+
+
+Kubectl v1.11.3+
+
+Access to a Kubernetes v1.11.3+ cluster
+
+Operator SDK
 ```
 
-**NOTE:** This image ought to be published in the personal registry you specified.
-And it is required to have access to pull the image from the working environment.
-Make sure you have the proper permission to the registry if the above commands don’t work.
+### 3. Build & Deploy Locally
+- Run locally using `make run` command
+- Build docker image using `make docker-build docker-push IMG=<your-registry>/auto-mtls:dev`
+- Deploy complete operator on your K8s cluster `make deploy IMG=<your-registry>/auto-mtls:dev`
 
-**Install the CRDs into the cluster:**
+## 📌 Ways to Contribute
+### 🐛 Report Bugs
 
-```sh
-make install
-```
+- Use GitHub Issues.
 
-**Deploy the Manager to the cluster with the image specified by `IMG`:**
+- Include steps to reproduce, logs, and your cluster setup.
 
-```sh
-make deploy IMG=<some-registry>/auto-mtls:tag
-```
+### 💡 Suggest Features
 
-> **NOTE**: If you encounter RBAC errors, you may need to grant yourself cluster-admin
-privileges or be logged in as admin.
+- Open an issue labeled enhancement.
 
-**Create instances of your solution**
-You can apply the samples (examples) from the config/sample:
+- Describe the problem and your proposed solution.
 
-```sh
-kubectl apply -k config/samples/
-```
+### 📝 Improve Documentation
 
->**NOTE**: Ensure that the samples has default values to test it out.
+- Fix typos, clarify instructions, or add examples.
 
-### To Uninstall
-**Delete the instances (CRs) from the cluster:**
+- PRs for README.md, CONTRIBUTING.md, or docs/ are always welcome.
 
-```sh
-kubectl delete -k config/samples/
-```
+### 💻 Submit Code
 
-**Delete the APIs(CRDs) from the cluster:**
+- Create a new branch from main.
 
-```sh
-make uninstall
-```
+- Follow Go best practices & run make test before pushing.
 
-**UnDeploy the controller from the cluster:**
+- Open a Pull Request with a clear description of your changes.
 
-```sh
-make undeploy
-```
+### 🔍 Pull Request Guidelines
 
-## Project Distribution
+- Keep PRs focused — small, logical chunks are easier to review.
 
-Following the options to release and provide this solution to the users.
+- Include tests where applicable.
 
-### By providing a bundle with all YAML files
+- Update docs (README.md, examples/) if your change affects users.
 
-1. Build the installer for the image built and published in the registry:
+- Ensure make test passes.
 
-```sh
-make build-installer IMG=<some-registry>/auto-mtls:tag
-```
+### ⭐ Recognition
 
-**NOTE:** The makefile target mentioned above generates an 'install.yaml'
-file in the dist directory. This file contains all the resources built
-with Kustomize, which are necessary to install this project without its
-dependencies.
+We use the All Contributors spec to recognize all forms of contributions.
+Everyone who helps — code, docs, issues, reviews — will show up in our Contributors section 🙌
 
-2. Using the installer
+### 📚 Resources
 
-Users can just run 'kubectl apply -f <URL for YAML BUNDLE>' to install
-the project, i.e.:
+- Operator Docs
 
-```sh
-kubectl apply -f https://raw.githubusercontent.com/<org>/auto-mtls/<tag or branch>/dist/install.yaml
-```
+- cert-manager
 
-### By providing a Helm Chart
 
-1. Build the chart using the optional helm plugin
+📄 License
 
-```sh
-operator-sdk edit --plugins=helm/v1-alpha
-```
-
-2. See that a chart was generated under 'dist/chart', and users
-can obtain this solution from there.
-
-**NOTE:** If you change the project, you need to update the Helm Chart
-using the same command above to sync the latest changes. Furthermore,
-if you create webhooks, you need to use the above command with
-the '--force' flag and manually ensure that any custom configuration
-previously added to 'dist/chart/values.yaml' or 'dist/chart/manager/manager.yaml'
-is manually re-applied afterwards.
-
-## Contributing
-// TODO(user): Add detailed information on how you would like others to contribute to this project
-
-**NOTE:** Run `make help` for more information on all potential `make` targets
-
-More information can be found via the [Kubebuilder Documentation](https://book.kubebuilder.io/introduction.html)
-
-## License
-
-Copyright 2025.
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-    http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-
+By contributing, you agree that your contributions will be licensed under the Apache 2.0 License.
