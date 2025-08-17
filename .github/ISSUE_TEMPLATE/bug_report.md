@@ -25,11 +25,6 @@ If applicable, add screenshots to help explain your problem.
  - K8s Flavor[e.g. AKS, EKS, Minikube etc]
  - Cert-Manager Version
 
-**Smartphone (please complete the following information):**
- - Device: [e.g. iPhone6]
- - OS: [e.g. iOS8.1]
- - Browser [e.g. stock browser, safari]
- - Version [e.g. 22]
 
 **Additional context**
 Add any other context about the problem here.
