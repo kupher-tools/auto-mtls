@@ -2,22 +2,22 @@ name: CI
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ main ]
   pull_request:
-    branches: [ "main" ]
+    branches: [ main ]
 
 jobs:
-  test:
+  build-test:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout code
+      - name: Checkout repo
         uses: actions/checkout@v4
 
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.22'
+          go-version: 1.22
 
       - name: Cache Go modules
         uses: actions/cache@v4
@@ -35,26 +35,36 @@ jobs:
       - name: Run go vet
         run: go vet ./...
 
-      - name: Run unit tests
+      - name: Run unit tests with coverage
         run: go test ./... -coverprofile=coverage.out
 
-      - name: Set up KinD cluster
+      # ---------- E2E Setup ----------
+      - name: Set up kind cluster
         uses: helm/kind-action@v1.10.0
         with:
-          version: v0.24.0
-          node_image: kindest/node:v1.30.0
-          wait: 120s
+          cluster_name: kind
 
-      - name: Install Kubectl
+      - name: Install kubectl
         uses: azure/setup-kubectl@v4
         with:
-          version: 'v1.30.0'
+          version: v1.30.0
 
-      - name: Build and load Docker image into Kind
+      - name: Install cert-manager
         run: |
-          make docker-build IMG=example.com/auto-mtls:v0.0.1
-          kind load docker-image example.com/auto-mtls:v0.0.1
+          kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.14.4/cert-manager.yaml
+          kubectl rollout status deployment/cert-manager -n cert-manager --timeout=120s || true
+          kubectl rollout status deployment/cert-manager-webhook -n cert-manager --timeout=120s || true
 
-      - name: Run E2E tests
+      - name: Build Docker image
         run: |
-          go test ./test/e2e/... -v
+          docker build -t auto-mtls:latest .
+
+      - name: Load image into kind
+        run: kind load docker-image auto-mtls:latest --name kind
+
+      - name: Deploy manifests
+        run: |
+          kubectl apply -f config/deploy/
+
+      - name: Run e2e tests
+        run: go test ./test/e2e -v
