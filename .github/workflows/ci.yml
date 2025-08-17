@@ -1,23 +1,21 @@
-name: Go CI
+name: CI
 
 on:
   push:
-    branches: [ main ]
+    branches: [ "main" ]
   pull_request:
-    branches: [ main ]
+    branches: [ "main" ]
 
 jobs:
   build:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
+      - uses: actions/checkout@v3
 
       - name: Set up Go
         uses: actions/setup-go@v4
         with:
-          go-version: 1.22
+          go-version: '1.21'
 
       - name: Cache Go modules
         uses: actions/cache@v3
@@ -35,38 +33,32 @@ jobs:
       - name: Run go vet
         run: go vet ./...
 
-      - name: Run unit tests with coverage
+      - name: Run unit tests
         run: go test ./... -coverprofile=coverage.out
 
-  e2e-tests:
+  e2e:
     runs-on: ubuntu-latest
     needs: build
-
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
+      - uses: actions/checkout@v3
 
       - name: Set up Go
         uses: actions/setup-go@v4
         with:
-          go-version: 1.22
+          go-version: '1.21'
 
-      - name: Install Kind & Kubectl
-        run: |
-          curl -Lo ./kind https://kind.sigs.k8s.io/dl/v0.23.0/kind-linux-amd64
-          chmod +x ./kind
-          sudo mv ./kind /usr/local/bin/kind
-          curl -LO "https://dl.k8s.io/release/$(curl -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
-          chmod +x kubectl
-          sudo mv kubectl /usr/local/bin/
+      - name: Install KinD
+        uses: engineerd/setup-kind@v0.5.0
+        with:
+          version: v0.20.0
 
-      - name: Create Kind cluster
-        run: kind create cluster --name kind
+      - name: Create KinD cluster
+        run: kind create cluster --name kind --wait 60s
 
-      - name: Build Docker image for tests
+      - name: Build Operator Docker image
         run: make docker-build IMG=example.com/auto-mtls:v0.0.1
 
-      - name: Load image into Kind
+      - name: Load image into KinD
         run: kind load docker-image example.com/auto-mtls:v0.0.1 --name kind
 
       - name: Run e2e tests
