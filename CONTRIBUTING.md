@@ -22,9 +22,9 @@ Docker 17.03+
 
 Kubectl v1.11.3+
 
-Access to a Kubernetes v1.11.3+ cluster
+Kubernetes v1.30+
 
-Operator SDK
+Operator SDK v1.41.1
 ```
 
 ### 3. Build & Deploy Locally
