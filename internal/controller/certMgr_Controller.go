@@ -18,7 +18,6 @@ package controller
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	certmanagerv1 "github.com/cert-manager/cert-manager/pkg/apis/certmanager/v1"
@@ -53,9 +52,9 @@ type CertMgrReconciler struct {
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.21.0/pkg/reconcile
 func (r *CertMgrReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	log := logf.FromContext(ctx)
+	log := logf.FromContext(ctx).WithName("cert-mgr")
 
-	log.Info("Reconciling Cert Mgr Infra")
+	log.Info("Starting certificate manager infrastructure reconciliation")
 
 	if err := createSelfSignedIssuer(ctx, r.Client); err != nil {
 		return ctrl.Result{}, err
@@ -74,14 +73,14 @@ func (r *CertMgrReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 }
 
 func createSelfSignedIssuer(ctx context.Context, c client.Client) error {
-
+	log := logf.FromContext(ctx)
 	selfSignedIssuer := "auto-mtls-cluster-selfsigned-issuer"
 
 	// Check if it already exists
 	existing := &certmanagerv1.ClusterIssuer{}
 	err := c.Get(ctx, client.ObjectKey{Name: selfSignedIssuer}, existing)
 	if err == nil {
-		ctrl.Log.Info("SelfSigned Issuer already exists, skipping creation", "name", selfSignedIssuer)
+		log.Info("Self-signed issuer already exists, skipping creation", "issuer", selfSignedIssuer)
 		return nil
 	}
 
@@ -103,16 +102,17 @@ func createSelfSignedIssuer(ctx context.Context, c client.Client) error {
 
 	// Create if not exists
 	if err := c.Create(ctx, clusterIssuer); err != nil {
-		ctrl.Log.Info("Failed to create SelfSigned Issuer as its already available", "name", clusterIssuer.Name)
+		log.Error(err, "Failed to create self-signed issuer", "issuer", clusterIssuer.Name)
 		return err
 	}
 
-	ctrl.Log.Info("SelfSigned Issuer created successfully", "name", clusterIssuer.Name)
+	log.Info("Self-signed issuer created successfully", "issuer", clusterIssuer.Name)
 	return nil
 
 }
 
 func createCACert(ctx context.Context, c client.Client) error {
+	log := logf.FromContext(ctx)
 	caCertName := "auto-mtls-cluster-ca-cert"
 	caCertNamespace := "cert-manager"
 	caCertSecret := "auto-mtls-cluster-ca-cert-secret"
@@ -122,7 +122,7 @@ func createCACert(ctx context.Context, c client.Client) error {
 	// Check if it already exists
 	err := c.Get(ctx, client.ObjectKey{Name: caCertName, Namespace: caCertNamespace}, existing)
 	if err == nil {
-		ctrl.Log.Info("ClusterIssuer already exists, skipping creation", "name", caCertName)
+		log.Info("CA certificate already exists, skipping creation", "certificate", caCertName, "namespace", caCertNamespace)
 		return nil
 	}
 
@@ -144,21 +144,22 @@ func createCACert(ctx context.Context, c client.Client) error {
 	}
 
 	if err := c.Create(ctx, caCert); err != nil {
-		ctrl.Log.Error(err, "Failed to create CA Certificate", "name", caCert.Name)
+		log.Error(err, "Failed to create CA certificate", "certificate", caCert.Name, "namespace", caCert.Namespace)
 		return err
 	}
+	log.Info("CA certificate created successfully", "certificate", caCert.Name, "namespace", caCert.Namespace)
 	return nil
 }
 
 func createClusterCAIssuer(ctx context.Context, c client.Client) error {
-
+	log := logf.FromContext(ctx)
 	caIssuer := "auto-mtls-cluster-ca-issuer"
 
 	// Check if it already exists
 	existing := &certmanagerv1.ClusterIssuer{}
 	err := c.Get(ctx, client.ObjectKey{Name: caIssuer}, existing)
 	if err == nil {
-		ctrl.Log.Info("ClusterIssuer already exists, skipping creation", "name", caIssuer)
+		log.Info("CA cluster issuer already exists, skipping creation", "issuer", caIssuer)
 		return nil
 	}
 
@@ -182,11 +183,11 @@ func createClusterCAIssuer(ctx context.Context, c client.Client) error {
 
 	// Create if not exists
 	if err := c.Create(ctx, clusterIssuer); err != nil {
-		ctrl.Log.Error(err, "Failed to create CA ClusterIssuer", "name", clusterIssuer.Name)
+		log.Error(err, "Failed to create CA cluster issuer", "issuer", clusterIssuer.Name)
 		return err
 	}
 
-	ctrl.Log.Info("CA ClusterIssuer created successfully", "name", clusterIssuer.Name)
+	log.Info("CA cluster issuer created successfully", "issuer", clusterIssuer.Name)
 	return nil
 
 }
@@ -200,10 +201,11 @@ func (r *CertMgrReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		for {
 			select {
 			case <-ticker.C:
-				fmt.Println("Periodic run of CertMgrReconciler...")
+				log := logf.FromContext(ctx)
+				log.V(1).Info("Running periodic certificate manager reconciliation")
 				// Call your existing Reconcile logic
 				if _, err := r.Reconcile(ctx, ctrl.Request{}); err != nil {
-					fmt.Println("Error in periodic reconcile:", err)
+					log.Error(err, "Error in periodic certificate manager reconciliation")
 				}
 			case <-ctx.Done():
 				return nil
