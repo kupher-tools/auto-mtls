@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  push:
+    branches: ["main","develop"]
+  pull_request:
+  workflow_dispatch:  
+  
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+
+      - name: Run Go Lint
+        run: |
+          go install golang.org/x/lint/golint@latest
+          golint ./...  
+
+      - name: Set up Kubernetes Cluster
+        uses: helm/kind-action@v1.8.0
+        with:
+          cluster_name: ci-cluster
+
+      - name: Build Docker Image
+        run: docker build -t kupher/auto-mtls-operator:v0.0.1 .
+
+      - name: Load Image into Cluster
+        run: kind load docker-image kupher/auto-mtls-operator:v0.0.1 --name ci-cluster
+
+      - name: Deploy to Kubernetes
+        run: |
+          kubectl apply -f deploy/auto-mtls-deploy.yaml
+
+      - name: Wait for Deployment
+        run: |
+          kubectl rollout status deployment/auto-mtls-operator \
+            -n auto-mtls-system --timeout=120s
+
+      - name: Wait for Pods to be Ready
+        run: |
+          kubectl wait --for=condition=ready pod \
+            -l app.kubernetes.io/name=auto-mtls -n auto-mtls-system --timeout=120s
