@@ -24,11 +24,12 @@ jobs:
       # Install kubectl (fixed version issue)
       - name: Install kubectl
         run: |
-          KUBECTL_VERSION=$(curl -s https://dl.k8s.io/release/stable.txt | tr -d '\n')
+          KUBECTL_VERSION=$(curl -sL https://dl.k8s.io/release/stable.txt | tr -d '\n')
           echo "Downloading kubectl version $KUBECTL_VERSION"
           curl -LO "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/amd64/kubectl"
           chmod +x kubectl
           sudo mv kubectl /usr/local/bin/kubectl
+
 
       # Create Kubernetes cluster with kind
       - name: Create kind cluster
