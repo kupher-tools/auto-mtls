@@ -4,7 +4,7 @@ on:
   push:
     branches: [main]
   pull_request:
-  workflow_dispatch:  
+  workflow_dispatch:  # Manual trigger support
 
 jobs:
   build-and-deploy:
@@ -14,25 +14,33 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      # Set up Kubernetes Cluster using kind
       - name: Set up Kubernetes Cluster
         uses: helm/kind-action@v1.8.0
         with:
           cluster_name: ci-cluster
 
+      # Build Docker image (optional if using existing image)
       - name: Build Docker Image
-        run: docker build -t myapp:latest .
+        run: docker build -t kupher/auto-mtls-operator:v0.0.1 .
 
+      # Load Docker image into kind cluster
       - name: Load Image into Cluster
-        run: kind load docker-image myapp:latest --name ci-cluster
+        run: kind load docker-image kupher/auto-mtls-operator:v0.0.1 --name ci-cluster
 
+      # Deploy Kubernetes manifest
       - name: Deploy to Kubernetes
         run: |
           kubectl apply -f deploy/auto-mtls-deploy.yaml
 
+      # Wait for deployment rollout
       - name: Wait for Deployment
         run: |
-          kubectl rollout status deployment/myapp-deployment --timeout=120s
+          kubectl rollout status deployment/auto-mtls-operator \
+            -n auto-mtls-system --timeout=120s
 
+      # Wait for pods to be ready
       - name: Wait for Pods to be Ready
         run: |
-          kubectl wait --for=condition=ready pod -l app=myapp --timeout=120s
+          kubectl wait --for=condition=ready pod \
+            -l app.kubernetes.io/name=auto-mtls -n auto-mtls-system --timeout=120s
