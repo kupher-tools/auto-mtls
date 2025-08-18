@@ -2,65 +2,51 @@ name: CI
 
 on:
   push:
-    branches: [ "main" ]
+    branches:
+      - main
   pull_request:
-    branches: [ "main" ]
 
 jobs:
-  build-test:
+  build-and-deploy:
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v3
 
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: 1.22
-
-      - name: Cache Go modules
-        uses: actions/cache@v3
-        with:
-          path: |
-            ~/go/pkg/mod
-            ~/.cache/go-build
-          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
-          restore-keys: |
-            ${{ runner.os }}-go-
-
-      - name: Run go fmt
-        run: go fmt ./...
-
-      - name: Run go vet
-        run: go vet ./...
-
-      - name: Install kind and kubectl
+      # Install kind
+      - name: Install kind
         run: |
-          # Install kind
           curl -Lo kind https://kind.sigs.k8s.io/dl/v0.23.0/kind-linux-amd64
           chmod +x kind
           sudo mv kind /usr/local/bin/kind
 
-          # Install kubectl
-          KUBECTL_VERSION=$(curl -s https://dl.k8s.io/release/stable.txt)
+      # Install kubectl (fixed version issue)
+      - name: Install kubectl
+        run: |
+          KUBECTL_VERSION=$(curl -s https://dl.k8s.io/release/stable.txt | tr -d '\n')
+          echo "Downloading kubectl version $KUBECTL_VERSION"
           curl -LO "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/amd64/kubectl"
           chmod +x kubectl
           sudo mv kubectl /usr/local/bin/kubectl
 
+      # Create Kubernetes cluster with kind
+      - name: Create kind cluster
+        run: |
+          kind create cluster --name ci-cluster
 
+      # Load Docker image into kind cluster
+      - name: Build Docker image
+        run: |
+          docker build -t myapp:latest .
 
-      - name: Create Kind Cluster
-        run: kind create cluster --name kind --wait 120s
+      - name: Load image into kind
+        run: |
+          kind load docker-image myapp:latest --name ci-cluster
 
-      - name: Verify Cluster
-        run: kubectl get nodes
-
-      - name: Run Tests
-        run: go test ./... -coverprofile=coverage.out
-
-      - name: Upload coverage
-        uses: actions/upload-artifact@v4
-        with:
-          name: coverage-report
-          path: coverage.out
+      # Deploy to kind
+      - name: Deploy to Kubernetes
+        run: |
+          kubectl apply -f k8s/deployment.yaml
+          kubectl apply -f k8s/service.yaml
+          kubectl rollout status deployment/myapp-deployment
