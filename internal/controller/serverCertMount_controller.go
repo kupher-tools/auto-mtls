@@ -26,7 +26,6 @@ import (
 
 	certmanagerv1 "github.com/cert-manager/cert-manager/pkg/apis/certmanager/v1"
 	certmanagermetav1 "github.com/cert-manager/cert-manager/pkg/apis/meta/v1"
-	"github.com/go-logr/logr"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -74,9 +73,9 @@ func (r *AutomtlsReconciler) SetupWithManager(mgr ctrl.Manager) error {
 // 3. Once secret created, patch deployment to mount tls secret
 
 func (r *AutomtlsReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	log := logf.FromContext(ctx)
+	log := logf.FromContext(ctx).WithName("auto-mtls")
 
-	log.Info("Reconciling auto-mtls", "name", req.Name, "namespace", req.Namespace)
+	log.Info("Starting auto-mTLS reconciliation", "service", req.Name, "namespace", req.Namespace)
 	svc := &corev1.Service{}
 
 	if err := r.Get(ctx, req.NamespacedName, svc); err != nil {
@@ -92,7 +91,7 @@ func (r *AutomtlsReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 			if err != nil && !apierrors.IsNotFound(err) {
 				return ctrl.Result{}, err
 			}
-			log.Info("Deleted certificate because service was deleted", "namespace", req.Namespace, "secret", certName)
+			log.Info("Certificate deleted due to service deletion", "certificate", certName, "namespace", req.Namespace)
 			// certificate is deleted → delete the secret
 			secretName := req.Name + "-cert-tls"
 
@@ -106,13 +105,13 @@ func (r *AutomtlsReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 			if err != nil && !apierrors.IsNotFound(err) {
 				return ctrl.Result{}, err
 			}
-			log.Info("Deleted secret because service was deleted", "namespace", req.Namespace, "secret", secretName)
+			log.Info("Secret deleted due to service deletion", "secret", secretName, "namespace", req.Namespace)
 			return ctrl.Result{}, nil
 		}
 		return ctrl.Result{}, err
 	}
 
-	err := r.enablemTLS(ctx, svc, log)
+	err := r.enablemTLS(ctx, svc)
 	if err != nil {
 		log.Error(err, "Failed to enable mTLS for service", "service", svc.Name)
 		return ctrl.Result{}, err
@@ -121,32 +120,34 @@ func (r *AutomtlsReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	return ctrl.Result{}, nil
 }
 
-func (r *AutomtlsReconciler) enablemTLS(ctx context.Context, svc *corev1.Service, log logr.Logger) error {
+func (r *AutomtlsReconciler) enablemTLS(ctx context.Context, svc *corev1.Service) error {
+	log := logf.FromContext(ctx)
 	// Implementation for enabling server TLS
 
 	// Create Server cert and corresponding TLS secret
-	if err := r.createServerCert(ctx, svc, log); err != nil {
+	if err := r.createServerCert(ctx, svc); err != nil {
 		log.Error(err, "Failed to create certificate for service", "service", svc.Name)
 		return err
 	}
 
 	// Create CA cert TLS secret
-	if err := r.createCACertSecret(ctx, svc, log); err != nil {
-		log.Error(err, "Failed to create CA cert secret for service", "service", svc.Name)
+	if err := r.createCACertSecret(ctx, svc); err != nil {
+		log.Error(err, "Failed to create CA certificate secret", "service", svc.Name, "namespace", svc.Namespace)
 		return err
 	}
 
 	//mount Ca Cert and Server keys
-	if err := r.mountMTLSCerts(ctx, svc, log); err != nil {
-		log.Error(err, "Failed to create CA cert secret for service", "service", svc.Name)
+	if err := r.mountMTLSCerts(ctx, svc); err != nil {
+		log.Error(err, "Failed to mount mTLS certificates", "service", svc.Name, "namespace", svc.Namespace)
 		return err
 	}
-	log.Info("Successfully mounted mTLS certificates for service", "service", svc.Name)
+	log.Info("mTLS certificates mounted successfully", "service", svc.Name, "namespace", svc.Namespace)
 	return nil
 
 }
 
-func (r *AutomtlsReconciler) mountMTLSCerts(ctx context.Context, svc *corev1.Service, log logr.Logger) error {
+func (r *AutomtlsReconciler) mountMTLSCerts(ctx context.Context, svc *corev1.Service) error {
+	log := logf.FromContext(ctx)
 	// Implementation for mounting mTLS certificates into the deployment
 	deploy, err := r.findDeploymentForSvc(ctx, svc)
 	if err != nil {
@@ -154,7 +155,7 @@ func (r *AutomtlsReconciler) mountMTLSCerts(ctx context.Context, svc *corev1.Ser
 		return err
 	}
 	if deploy == nil {
-		log.Info("No deployment found for service", "service", svc.Name)
+		log.V(1).Info("No deployment found for service, skipping certificate mounting", "service", svc.Name, "namespace", svc.Namespace)
 		return nil // Nothing to do if no deployment found
 	} else {
 		err = mountSecrets(ctx, r.Client, deploy, svc.Name)
@@ -169,13 +170,14 @@ func (r *AutomtlsReconciler) mountMTLSCerts(ctx context.Context, svc *corev1.Ser
 			return err
 		}
 
-		log.Info("Successfully mounted server certificate to deployment", "deployment", deploy.Name, "service", svc.Name)
+		log.Info("Server certificate mounted to deployment successfully", "deployment", deploy.Name, "service", svc.Name, "namespace", svc.Namespace)
 		return nil
 	}
 
 }
 
-func (r *AutomtlsReconciler) createCACertSecret(ctx context.Context, svc *corev1.Service, log logr.Logger) error {
+func (r *AutomtlsReconciler) createCACertSecret(ctx context.Context, svc *corev1.Service) error {
+	log := logf.FromContext(ctx)
 	caCertSecret := &corev1.Secret{}
 
 	err := r.Get(ctx, types.NamespacedName{
@@ -185,7 +187,7 @@ func (r *AutomtlsReconciler) createCACertSecret(ctx context.Context, svc *corev1
 
 	if err == nil {
 		// Secret already exists — skip
-		log.Info("Secret already exist, so skipping")
+		log.V(1).Info("CA certificate secret already exists, skipping creation", "secret", "auto-mtls-ca-cert", "namespace", svc.Namespace)
 		return nil
 	} else {
 		//Create secret for CA cert in namespace
@@ -194,13 +196,13 @@ func (r *AutomtlsReconciler) createCACertSecret(ctx context.Context, svc *corev1
 			Name:      "auto-mtls-cluster-ca-cert-secret",
 			Namespace: "cert-manager",
 		}, src); err != nil {
-			log.Error(err, "failed to get source CA secret")
+			log.Error(err, "Failed to get source CA secret", "secret", "auto-mtls-cluster-ca-cert-secret", "namespace", "cert-manager")
 			return err
 		}
 
 		caData, ok := src.Data["ca.crt"]
 		if !ok {
-			log.Error(err, "Source secret missing ca.crt")
+			log.Error(nil, "Source secret missing ca.crt field", "secret", "auto-mtls-cluster-ca-cert-secret", "namespace", "cert-manager")
 			return fmt.Errorf("source secret missing ca.crt")
 
 		}
@@ -216,10 +218,11 @@ func (r *AutomtlsReconciler) createCACertSecret(ctx context.Context, svc *corev1
 		}
 
 		if err := r.Create(ctx, newSecret); err != nil {
+			log.Error(err, "Failed to create CA certificate secret", "secret", newSecret.Name, "namespace", svc.Namespace)
 			return fmt.Errorf("failed to create secret in %s: %w", svc.Namespace, err)
 		}
 
-		fmt.Println("Created CA secret in", svc.Namespace)
+		log.Info("CA certificate secret created successfully", "secret", newSecret.Name, "namespace", svc.Namespace)
 
 	}
 	return nil
@@ -255,7 +258,8 @@ func selectorMatches(labels, selector map[string]string) bool {
 	return true
 }
 
-func (r *AutomtlsReconciler) createServerCert(ctx context.Context, service *corev1.Service, log logr.Logger) error {
+func (r *AutomtlsReconciler) createServerCert(ctx context.Context, service *corev1.Service) error {
+	log := logf.FromContext(ctx)
 	namespace := service.Namespace
 	svc := service.Name
 	caIssuer := "auto-mtls-cluster-ca-issuer"
@@ -271,7 +275,7 @@ func (r *AutomtlsReconciler) createServerCert(ctx context.Context, service *core
 
 	if err == nil {
 		// Certificate already exists — nothing to do
-		log.Info("Certificate already exists", "name", certName, "namespace", namespace)
+		log.V(1).Info("Certificate already exists, skipping creation", "certificate", certName, "namespace", namespace)
 		return nil
 	}
 
@@ -304,15 +308,16 @@ func (r *AutomtlsReconciler) createServerCert(ctx context.Context, service *core
 	}
 	err = r.Create(ctx, cert)
 	if err != nil {
-		log.Error(err, "Failed to create certificate", "name", certName, "namespace", namespace)
+		log.Error(err, "Failed to create certificate", "certificate", certName, "namespace", namespace, "service", svc)
 		return err
 	}
-	log.Info("Created certificate", "name", certName, "namespace", namespace)
+	log.Info("Certificate created successfully", "certificate", certName, "namespace", namespace, "service", svc)
 	return nil
 }
 
 // patchDeployment adds a volume and volumeMount if missing
 func mountSecrets(ctx context.Context, c client.Client, deploy *appsv1.Deployment, svcName string) error {
+	log := logf.FromContext(ctx)
 	serverCertvolumeName := svcName + "-cert-tls"
 	patched := deploy.DeepCopy()
 
@@ -320,7 +325,7 @@ func mountSecrets(ctx context.Context, c client.Client, deploy *appsv1.Deploymen
 	foundServerCertVol := false
 	for _, v := range patched.Spec.Template.Spec.Volumes {
 		if v.Name == serverCertvolumeName {
-			fmt.Println("Skipping auto-mtls-cert volume to deployment", "deployment", deploy.Name)
+			log.V(1).Info("Server certificate volume already exists, skipping", "deployment", deploy.Name, "volume", serverCertvolumeName)
 			foundServerCertVol = true
 		}
 	}
@@ -363,7 +368,7 @@ func mountSecrets(ctx context.Context, c client.Client, deploy *appsv1.Deploymen
 	caCertVol := false
 	for _, v := range patched.Spec.Template.Spec.Volumes {
 		if v.Name == caCertvolumeName {
-			fmt.Println("Skipping auto-mtls-cert volume to deployment", "deployment", deploy.Name)
+			log.V(1).Info("CA certificate volume already exists, skipping", "deployment", deploy.Name, "volume", caCertvolumeName)
 			caCertVol = true
 		}
 	}

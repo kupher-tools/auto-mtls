@@ -52,9 +52,9 @@ type DeploymentReconciler struct {
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.21.0/pkg/reconcile
 func (r *DeploymentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	log := logf.FromContext(ctx)
+	log := logf.FromContext(ctx).WithName("ca-cert-mount")
 
-	log.Info("Reconciling Cert Mount Controller", "name", req.Name, "namespace", req.Namespace)
+	log.Info("Starting CA certificate mount reconciliation", "deployment", req.Name, "namespace", req.Namespace)
 
 	caCertSecret := &corev1.Secret{}
 
@@ -65,7 +65,7 @@ func (r *DeploymentReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 
 	if err == nil {
 		// Secret already exists — skip
-		fmt.Println("CA secret already exists in", req.Namespace)
+		log.V(1).Info("CA secret already exists, skipping creation", "namespace", req.Namespace)
 
 	} else {
 		//Create secret for CA cert in namespace
@@ -75,13 +75,13 @@ func (r *DeploymentReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 			Name:      "auto-mtls-cluster-ca-cert-secret",
 			Namespace: "cert-manager",
 		}, src); err != nil {
-			log.Error(err, "failed to get source CA secret")
+			log.Error(err, "Failed to get source CA secret", "secret", "auto-mtls-cluster-ca-cert-secret", "namespace", "cert-manager")
 			return ctrl.Result{}, err
 		}
 
 		caData, ok := src.Data["ca.crt"]
 		if !ok {
-			log.Error(err, "Source secret missing ca.crt")
+			log.Error(nil, "Source secret missing ca.crt field", "secret", "auto-mtls-cluster-ca-cert-secret", "namespace", "cert-manager")
 			return ctrl.Result{}, fmt.Errorf("source secret missing ca.crt")
 
 		}
@@ -97,10 +97,11 @@ func (r *DeploymentReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		}
 
 		if err := r.Create(ctx, newSecret); err != nil {
+			log.Error(err, "Failed to create CA secret", "secret", newSecret.Name, "namespace", req.Namespace)
 			return ctrl.Result{}, fmt.Errorf("failed to create secret in %s: %w", req.Namespace, err)
 		}
 
-		fmt.Println("Created CA secret in", req.Namespace)
+		log.Info("CA secret created successfully", "secret", newSecret.Name, "namespace", req.Namespace)
 
 	}
 
@@ -122,6 +123,7 @@ func (r *DeploymentReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 
 // patchDeployment adds a volume and volumeMount if missing
 func patchDeployment(ctx context.Context, c client.Client, deploy *appsv1.Deployment) error {
+	log := logf.FromContext(ctx)
 	volumeName := "auto-mtls-ca-cert"
 	secretName := "auto-mtls-ca-cert"
 	patched := deploy.DeepCopy()
@@ -131,7 +133,7 @@ func patchDeployment(ctx context.Context, c client.Client, deploy *appsv1.Deploy
 	foundVol := false
 	for _, v := range patched.Spec.Template.Spec.Volumes {
 		if v.Name == volumeName {
-			fmt.Println("Skipping auto-mtls-ca-cert volume to deployment", "deployment", deploy.Name)
+			log.V(1).Info("CA certificate volume already exists, skipping", "deployment", deploy.Name, "volume", volumeName)
 			foundVol = true
 			return nil
 		}
